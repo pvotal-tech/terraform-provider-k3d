@@ -126,7 +126,7 @@ EOF
 
 ### Read-Only
 
-- **kubeconfig_raw** (String, Sensitive) The full contents of the Kubernetes cluster's kubeconfig file.
+- **credentials** (List of Object, Sensitive) Cluster credentials. (see [below for nested schema](#nestedatt--credentials))
 
 <a id="nestedblock--env"></a>
 ### Nested Schema for `env`
@@ -238,5 +238,17 @@ Optional:
 
 - **node_filters** (List of String)
 - **source** (String)
+
+
+<a id="nestedatt--credentials"></a>
+### Nested Schema for `credentials`
+
+Read-Only:
+
+- **client_certificate** (String)
+- **client_key** (String)
+- **cluster_ca_certificate** (String)
+- **host** (String)
+- **raw** (String)
 
 

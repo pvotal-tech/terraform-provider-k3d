@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/rancher/k3d/v4/cmd/util"
 	"github.com/rancher/k3d/v4/pkg/client"
@@ -43,6 +44,36 @@ func resourceCluster() *schema.Resource {
 				Optional:    true,
 				Type:        schema.TypeInt,
 				Default:     0,
+			},
+			"credentials": {
+				Description: "Cluster credentials.",
+				Computed:    true,
+				Sensitive:   true,
+				Type:        schema.TypeList,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"client_certificate": {
+							Computed: true,
+							Type:     schema.TypeString,
+						},
+						"client_key": {
+							Computed: true,
+							Type:     schema.TypeString,
+						},
+						"cluster_ca_certificate": {
+							Computed: true,
+							Type:     schema.TypeString,
+						},
+						"host": {
+							Computed: true,
+							Type:     schema.TypeString,
+						},
+						"raw": {
+							Computed: true,
+							Type:     schema.TypeString,
+						},
+					},
+				},
 			},
 			"env": {
 				Description: "Add environment variables to nodes.",
@@ -185,12 +216,6 @@ func resourceCluster() *schema.Resource {
 						},
 					},
 				},
-			},
-			"kubeconfig_raw": {
-				Description: "The full contents of the Kubernetes cluster's kubeconfig file.",
-				Computed:    true,
-				Sensitive:   true,
-				Type:        schema.TypeString,
 			},
 			"label": {
 				Description: "Add label to node container.",
@@ -475,9 +500,10 @@ func resourceClusterRead(ctx context.Context, d *schema.ResourceData, meta inter
 
 	k, err := client.KubeconfigGet(ctx, runtimes.SelectedRuntime, cluster)
 	if err == nil {
-		r, err := clientcmd.Write(*k)
 		if err == nil {
-			d.Set("kubeconfig_raw", fmt.Sprintf("%s", r))
+			if err := d.Set("credentials", flattenCredentials(clusterName, k)); err != nil {
+				return diag.FromErr(err)
+			}
 		} else {
 			log.Printf("[WARN] %s", err)
 		}
@@ -682,4 +708,21 @@ func expandVolumes(l []interface{}) []v1alpha2.VolumeWithNodeFilters {
 	}
 
 	return volumes
+}
+
+func flattenCredentials(clusterName string, config *clientcmdapi.Config) []interface{} {
+	clusterID := fmt.Sprintf("%s-%s", types.DefaultObjectNamePrefix, clusterName)
+	authInfoName := fmt.Sprintf("admin@%s-%s", types.DefaultObjectNamePrefix, clusterName)
+
+	raw, _ := clientcmd.Write(*config)
+
+	creds := map[string]interface{}{
+		"client_certificate":     string(config.AuthInfos[authInfoName].ClientCertificateData),
+		"client_key":             string(config.AuthInfos[authInfoName].ClientKeyData),
+		"cluster_ca_certificate": string(config.Clusters[clusterID].CertificateAuthorityData),
+		"host":                   config.Clusters[clusterID].Server,
+		"raw":                    string(raw),
+	}
+
+	return []interface{}{creds}
 }
