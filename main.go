@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/3rein/terraform-provider-k3d/internal/provider"
+	"github.com/pvotal-tech/terraform-provider-k3d/internal/provider"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 )
 
@@ -37,7 +37,7 @@ func main() {
 	opts := &plugin.ServeOpts{ProviderFunc: provider.New(version)}
 
 	if debugMode {
-		err := plugin.Debug(context.Background(), "registry.terraform.io/providers/3rein/k3d", opts)
+		err := plugin.Debug(context.Background(), "registry.terraform.io/providers/pvotal-tech/k3d", opts)
 		if err != nil {
 			log.Fatal(err.Error())
 		}

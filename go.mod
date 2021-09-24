@@ -1,4 +1,4 @@
-module github.com/3rein/terraform-provider-k3d
+module github.com/pvotal-tech/terraform-provider-k3d
 
 go 1.16
 
