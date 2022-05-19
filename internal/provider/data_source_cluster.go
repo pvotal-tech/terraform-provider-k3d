@@ -10,9 +10,9 @@ import (
 
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/rancher/k3d/v4/pkg/client"
-	"github.com/rancher/k3d/v4/pkg/runtimes"
-	"github.com/rancher/k3d/v4/pkg/types"
+	"github.com/k3d-io/k3d/v5/pkg/client"
+	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+	"github.com/k3d-io/k3d/v5/pkg/types"
 )
 
 func dataSourceCluster() *schema.Resource {

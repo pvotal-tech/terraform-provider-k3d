@@ -3,12 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
-	"github.com/rancher/k3d/v4/pkg/client"
-	"github.com/rancher/k3d/v4/pkg/runtimes"
-	"github.com/rancher/k3d/v4/pkg/types"
+	"github.com/k3d-io/k3d/v5/pkg/client"
+	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+	"github.com/k3d-io/k3d/v5/pkg/types"
 )
 
 func dataSourceRegistry() *schema.Resource {

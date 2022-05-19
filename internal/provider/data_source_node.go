@@ -7,9 +7,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
-	"github.com/rancher/k3d/v4/pkg/client"
-	"github.com/rancher/k3d/v4/pkg/runtimes"
-	"github.com/rancher/k3d/v4/pkg/types"
+	"github.com/k3d-io/k3d/v5/pkg/client"
+	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+	"github.com/k3d-io/k3d/v5/pkg/types"
 )
 
 func dataSourceNode() *schema.Resource {
@@ -49,7 +49,7 @@ func dataSourceNodeRead(ctx context.Context, d *schema.ResourceData, meta interf
 		return diag.FromErr(err)
 	}
 
-	if err := d.Set("cluster", node.Labels[types.LabelClusterName]); err != nil {
+	if err := d.Set("cluster", node.K3sNodeLabels[types.LabelClusterName]); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("role", string(node.Role)); err != nil {

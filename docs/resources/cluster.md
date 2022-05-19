@@ -62,7 +62,12 @@ resource "k3d_cluster" "mycluster" {
   }
 
   registries {
-    create = true
+    create = {
+      name      = "my-registry"
+      host      = "my-registry.local"
+      image     = "docker.io/some/registry"
+      host_port = "5001"
+    }
     use = [
       "k3d-myotherregistry:5000"
     ]
@@ -75,16 +80,15 @@ EOF
   }
 
   k3d {
-    disable_load_balancer     = false
-    disable_image_volume      = false
-    disable_host_ip_injection = false
+    disable_load_balancer = false
+    disable_image_volume  = false
   }
 
   k3s {
-    extra_server_args = [
-      "--tls-san=my.host.domain",
-    ]
-    extra_agent_args = []
+    extra_args = [{
+      arg          = "--tls-san=my.host.domain",
+      node_filters = ["agent"]
+    }]
   }
 
   kubeconfig {
@@ -103,42 +107,42 @@ EOF
 
 ### Required
 
-- **name** (String) Cluster name.
+- `name` (String) Cluster name.
 
 ### Optional
 
-- **agents** (Number) Specify how many agents you want to create.
-- **env** (Block List) Add environment variables to nodes. (see [below for nested schema](#nestedblock--env))
-- **id** (String) The ID of this resource.
-- **image** (String) Specify k3s image that you want to use for the nodes.
-- **k3d** (Block List, Max: 1) k3d runtime settings. (see [below for nested schema](#nestedblock--k3d))
-- **k3s** (Block List, Max: 1) Options passed on to k3s itself. (see [below for nested schema](#nestedblock--k3s))
-- **kube_api** (Block List, Max: 1) (see [below for nested schema](#nestedblock--kube_api))
-- **kubeconfig** (Block List, Max: 1) Manage the default kubeconfig (see [below for nested schema](#nestedblock--kubeconfig))
-- **label** (Block List) Add label to node container. (see [below for nested schema](#nestedblock--label))
-- **network** (String) Join an existing network.
-- **port** (Block List) Map ports from the node containers to the host. (see [below for nested schema](#nestedblock--port))
-- **registries** (Block List, Max: 1) Define how registries should be created or used. (see [below for nested schema](#nestedblock--registries))
-- **runtime** (Block List, Max: 1) Runtime (Docker) specific options (see [below for nested schema](#nestedblock--runtime))
-- **servers** (Number) Specify how many servers you want to create.
-- **token** (String, Sensitive) Specify a cluster token. By default, we generate one.
-- **volume** (Block List) Mount volumes into the nodes. (see [below for nested schema](#nestedblock--volume))
+- `agents` (Number) Specify how many agents you want to create.
+- `env` (Block List) Add environment variables to nodes. (see [below for nested schema](#nestedblock--env))
+- `image` (String) Specify k3s image that you want to use for the nodes.
+- `k3d` (Block List, Max: 1) k3d runtime settings. (see [below for nested schema](#nestedblock--k3d))
+- `k3s` (Block List, Max: 1) Options passed on to k3s itself. (see [below for nested schema](#nestedblock--k3s))
+- `kube_api` (Block List, Max: 1) (see [below for nested schema](#nestedblock--kube_api))
+- `kubeconfig` (Block List, Max: 1) Manage the default kubeconfig (see [below for nested schema](#nestedblock--kubeconfig))
+- `label` (Block List) Add label to node container. (see [below for nested schema](#nestedblock--label))
+- `network` (String) Join an existing network.
+- `port` (Block List) Map ports from the node containers to the host. (see [below for nested schema](#nestedblock--port))
+- `registries` (Block List, Max: 1) Define how registries should be created or used. (see [below for nested schema](#nestedblock--registries))
+- `runtime` (Block List, Max: 1) Runtime (Docker) specific options (see [below for nested schema](#nestedblock--runtime))
+- `servers` (Number) Specify how many servers you want to create.
+- `token` (String, Sensitive) Specify a cluster token. By default, we generate one.
+- `volume` (Block List) Mount volumes into the nodes. (see [below for nested schema](#nestedblock--volume))
 
 ### Read-Only
 
-- **credentials** (List of Object, Sensitive) Cluster credentials. (see [below for nested schema](#nestedatt--credentials))
+- `credentials` (List of Object, Sensitive) Cluster credentials. (see [below for nested schema](#nestedatt--credentials))
+- `id` (String) The ID of this resource.
 
 <a id="nestedblock--env"></a>
 ### Nested Schema for `env`
 
 Required:
 
-- **key** (String)
+- `key` (String)
 
 Optional:
 
-- **node_filters** (List of String)
-- **value** (String)
+- `node_filters` (List of String)
+- `value` (String)
 
 
 <a id="nestedblock--k3d"></a>
@@ -146,9 +150,8 @@ Optional:
 
 Optional:
 
-- **disable_host_ip_injection** (Boolean) Disable the automatic injection of the Host IP as 'host.k3d.internal' into the containers and CoreDNS.
-- **disable_image_volume** (Boolean) Disable the creation of a volume for importing images.
-- **disable_load_balancer** (Boolean) Disable the creation of a LoadBalancer in front of the server nodes.
+- `disable_image_volume` (Boolean) Disable the creation of a volume for importing images.
+- `disable_load_balancer` (Boolean) Disable the creation of a LoadBalancer in front of the server nodes.
 
 
 <a id="nestedblock--k3s"></a>
@@ -156,8 +159,16 @@ Optional:
 
 Optional:
 
-- **extra_agent_args** (List of String) Additional args passed to the k3s agent command on agent nodes.
-- **extra_server_args** (List of String) Additional args passed to the k3s server command on server nodes.
+- `extra_args` (Block List) Additional args passed to the k3s command. (see [below for nested schema](#nestedblock--k3s--extra_args))
+
+<a id="nestedblock--k3s--extra_args"></a>
+### Nested Schema for `k3s.extra_args`
+
+Optional:
+
+- `arg` (String)
+- `node_filters` (List of String)
+
 
 
 <a id="nestedblock--kube_api"></a>
@@ -165,9 +176,9 @@ Optional:
 
 Optional:
 
-- **host** (String) Important for the `server` setting in the kubeconfig.
-- **host_ip** (String) Where the Kubernetes API will be listening on.
-- **host_port** (Number) Specify the Kubernetes API server port exposed on the LoadBalancer.
+- `host` (String) Important for the `server` setting in the kubeconfig.
+- `host_ip` (String) Where the Kubernetes API will be listening on.
+- `host_port` (Number) Specify the Kubernetes API server port exposed on the LoadBalancer.
 
 
 <a id="nestedblock--kubeconfig"></a>
@@ -175,8 +186,8 @@ Optional:
 
 Optional:
 
-- **switch_current_context** (Boolean) Directly switch the default kubeconfig's current-context to the new cluster's context.
-- **update_default_kubeconfig** (Boolean) Directly update the default kubeconfig with the new cluster's context.
+- `switch_current_context` (Boolean) Directly switch the default kubeconfig's current-context to the new cluster's context.
+- `update_default_kubeconfig` (Boolean) Directly update the default kubeconfig with the new cluster's context.
 
 
 <a id="nestedblock--label"></a>
@@ -184,12 +195,12 @@ Optional:
 
 Required:
 
-- **key** (String)
+- `key` (String)
 
 Optional:
 
-- **node_filters** (List of String)
-- **value** (String)
+- `node_filters` (List of String)
+- `value` (String)
 
 
 <a id="nestedblock--port"></a>
@@ -197,14 +208,14 @@ Optional:
 
 Required:
 
-- **container_port** (Number)
+- `container_port` (Number)
 
 Optional:
 
-- **host** (String)
-- **host_port** (Number)
-- **node_filters** (List of String)
-- **protocol** (String)
+- `host` (String)
+- `host_port` (Number)
+- `node_filters` (List of String)
+- `protocol` (String)
 
 
 <a id="nestedblock--registries"></a>
@@ -212,9 +223,20 @@ Optional:
 
 Optional:
 
-- **config** (String) Specify path to an extra registries.yaml file.
-- **create** (Boolean) Create a k3d-managed registry and connect it to the cluster.
-- **use** (List of String) Connect to one or more k3d-managed registries running locally.
+- `config` (String) Specify path to an extra registries.yaml file.
+- `create` (Block List, Max: 1) Create a k3d-managed registry and connect it to the cluster. (see [below for nested schema](#nestedblock--registries--create))
+- `use` (List of String) Connect to one or more k3d-managed registries running locally.
+
+<a id="nestedblock--registries--create"></a>
+### Nested Schema for `registries.create`
+
+Optional:
+
+- `host` (String) Hostname to link to the created registry.
+- `host_port` (String) Host port exposed to access the registry.
+- `image` (String) Docker image of the registry.
+- `name` (String) Name of the registry to create.
+
 
 
 <a id="nestedblock--runtime"></a>
@@ -222,9 +244,9 @@ Optional:
 
 Optional:
 
-- **agents_memory** (String) Memory limit imposed on the agents nodes [From docker].
-- **gpu_request** (String) GPU devices to add to the cluster node containers ('all' to pass all GPUs) [From docker].
-- **servers_memory** (String) Memory limit imposed on the server nodes [From docker].
+- `agents_memory` (String) Memory limit imposed on the agents nodes [From docker].
+- `gpu_request` (String) GPU devices to add to the cluster node containers ('all' to pass all GPUs) [From docker].
+- `servers_memory` (String) Memory limit imposed on the server nodes [From docker].
 
 
 <a id="nestedblock--volume"></a>
@@ -232,12 +254,12 @@ Optional:
 
 Required:
 
-- **destination** (String)
+- `destination` (String)
 
 Optional:
 
-- **node_filters** (List of String)
-- **source** (String)
+- `node_filters` (List of String)
+- `source` (String)
 
 
 <a id="nestedatt--credentials"></a>
@@ -245,10 +267,10 @@ Optional:
 
 Read-Only:
 
-- **client_certificate** (String)
-- **client_key** (String)
-- **cluster_ca_certificate** (String)
-- **host** (String)
-- **raw** (String)
+- `client_certificate` (String)
+- `client_key` (String)
+- `cluster_ca_certificate` (String)
+- `host` (String)
+- `raw` (String)
 
 

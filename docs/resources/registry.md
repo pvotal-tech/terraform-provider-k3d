@@ -17,21 +17,24 @@ k3d-managed registry.
 
 ### Required
 
-- **name** (String) Node name.
+- `name` (String) Node name.
 
 ### Optional
 
-- **id** (String) The ID of this resource.
-- **image** (String) Node name.
-- **port** (Block List, Max: 1) Select which port the registry should be listening on on your machine (localhost). (see [below for nested schema](#nestedblock--port))
+- `image` (String) Node name.
+- `port` (Block List, Max: 1) Select which port the registry should be listening on on your machine (localhost). (see [below for nested schema](#nestedblock--port))
+
+### Read-Only
+
+- `id` (String) The ID of this resource.
 
 <a id="nestedblock--port"></a>
 ### Nested Schema for `port`
 
 Optional:
 
-- **host** (String)
-- **host_ip** (String)
-- **host_port** (Number)
+- `host` (String)
+- `host_ip` (String)
+- `host_port` (Number)
 
 
