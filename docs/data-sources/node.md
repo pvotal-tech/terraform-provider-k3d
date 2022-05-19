@@ -23,15 +23,12 @@ data "k3d_node" "mynode" {
 
 ### Required
 
-- **name** (String) Node name.
-
-### Optional
-
-- **id** (String) The ID of this resource.
+- `name` (String) Node name.
 
 ### Read-Only
 
-- **cluster** (String) Select the cluster that the node shall connect to.
-- **role** (String) Specify node role [server, agent].
+- `cluster` (String) Select the cluster that the node shall connect to.
+- `id` (String) The ID of this resource.
+- `role` (String) Specify node role [server, agent].
 
 

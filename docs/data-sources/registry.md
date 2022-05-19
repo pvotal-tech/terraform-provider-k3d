@@ -17,10 +17,10 @@ k3d-managed registry.
 
 ### Required
 
-- **name** (String) Registry name.
+- `name` (String) Registry name.
 
-### Optional
+### Read-Only
 
-- **id** (String) The ID of this resource.
+- `id` (String) The ID of this resource.
 
 

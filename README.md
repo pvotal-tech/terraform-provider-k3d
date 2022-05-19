@@ -5,7 +5,7 @@ This provider manages [k3d](https://k3d.io) Kubernetes clusters.
 ## Requirements
 
 -	[Terraform](https://www.terraform.io/downloads.html) >= 0.13.x
--	[Go](https://golang.org/doc/install) >= 1.16
+-	[Go](https://golang.org/doc/install) >= 1.18
 
 ## Using the provider
 
@@ -63,7 +63,12 @@ resource "k3d_cluster" "mycluster" {
   }
 
   registries {
-    create = true
+    create = {
+        name        = "my-registry"
+        host        = "my-registry.local"
+        image       = "docker.io/some/registry"
+        host_port   = "5001"
+    }
     use = [
       "k3d-myotherregistry:5000"
     ]
@@ -78,14 +83,13 @@ EOF
   k3d {
     disable_load_balancer     = false
     disable_image_volume      = false
-    disable_host_ip_injection = false
   }
 
   k3s {
-    extra_server_args = [
-      "--tls-san=my.host.domain",
-    ]
-    extra_agent_args = []
+    extra_args = [{
+      arg           = "--tls-san=my.host.domain",
+      node_filters  = ["agent"]
+    }]
   }
 
   kubeconfig {

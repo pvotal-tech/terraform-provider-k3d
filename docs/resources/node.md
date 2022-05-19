@@ -28,14 +28,17 @@ resource "k3d_node" "mynode" {
 
 ### Required
 
-- **name** (String) Node name.
+- `name` (String) Node name.
 
 ### Optional
 
-- **cluster** (String) Select the cluster that the node shall connect to.
-- **id** (String) The ID of this resource.
-- **image** (String) Specify k3s image used for the node(s).
-- **memory** (String) Memory limit imposed on the node [From docker]
-- **role** (String) Specify node role [server, agent].
+- `cluster` (String) Select the cluster that the node shall connect to.
+- `image` (String) Specify k3s image used for the node(s).
+- `memory` (String) Memory limit imposed on the node [From docker]
+- `role` (String) Specify node role [server, agent].
+
+### Read-Only
+
+- `id` (String) The ID of this resource.
 
 

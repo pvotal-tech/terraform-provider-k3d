@@ -23,16 +23,13 @@ data "k3d_cluster" "mycluster" {
 
 ### Required
 
-- **name** (String) Cluster name.
-
-### Optional
-
-- **id** (String) The ID of this resource.
+- `name` (String) Cluster name.
 
 ### Read-Only
 
-- **kubeconfig_raw** (String, Sensitive) The full contents of the Kubernetes cluster's kubeconfig file.
-- **network** (String) Join an existing network.
-- **token** (String, Sensitive) Specify a cluster token. By default, we generate one.
+- `id` (String) The ID of this resource.
+- `kubeconfig_raw` (String, Sensitive) The full contents of the Kubernetes cluster's kubeconfig file.
+- `network` (String) Join an existing network.
+- `token` (String, Sensitive) Specify a cluster token. By default, we generate one.
 
 

@@ -47,7 +47,12 @@ resource "k3d_cluster" "mycluster" {
   }
 
   registries {
-    create = true
+    create = {
+      name      = "my-registry"
+      host      = "my-registry.local"
+      image     = "docker.io/some/registry"
+      host_port = "5001"
+    }
     use = [
       "k3d-myotherregistry:5000"
     ]
@@ -60,16 +65,15 @@ EOF
   }
 
   k3d {
-    disable_load_balancer     = false
-    disable_image_volume      = false
-    disable_host_ip_injection = false
+    disable_load_balancer = false
+    disable_image_volume  = false
   }
 
   k3s {
-    extra_server_args = [
-      "--tls-san=my.host.domain",
-    ]
-    extra_agent_args = []
+    extra_args = [{
+      arg          = "--tls-san=my.host.domain",
+      node_filters = ["agent"]
+    }]
   }
 
   kubeconfig {

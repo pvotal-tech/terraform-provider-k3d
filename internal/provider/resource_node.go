@@ -8,13 +8,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
-	"github.com/rancher/k3d/v4/pkg/client"
-	"github.com/rancher/k3d/v4/pkg/runtimes"
-	"github.com/rancher/k3d/v4/pkg/types"
-	"github.com/rancher/k3d/v4/version"
+	"github.com/k3d-io/k3d/v5/pkg/client"
+	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+	"github.com/k3d-io/k3d/v5/pkg/types"
+	"github.com/k3d-io/k3d/v5/version"
 )
 
 func resourceNode() *schema.Resource {
+	k3dVersion, err := version.GetK3sVersion("stable")
+	if err != nil {
+		panic(err)
+	}
 	return &schema.Resource{
 		// This description is used by the documentation generator and the language server.
 		Description: "Containerized k3s node (k3s in docker).",
@@ -43,7 +47,7 @@ func resourceNode() *schema.Resource {
 				ForceNew:    true,
 				Optional:    true,
 				Type:        schema.TypeString,
-				Default:     fmt.Sprintf("%s:%s", types.DefaultK3sImageRepo, version.GetK3sVersion(false)),
+				Default:     fmt.Sprintf("%s:%s", types.DefaultK3sImageRepo, k3dVersion),
 			},
 			"memory": {
 				Description: "Memory limit imposed on the node [From docker]",
@@ -72,7 +76,7 @@ func resourceNodeCreate(ctx context.Context, d *schema.ResourceData, meta interf
 		Name:  nodeID,
 		Role:  types.NodeRoles[d.Get("role").(string)],
 		Image: d.Get("image").(string),
-		Labels: map[string]string{
+		K3sNodeLabels: map[string]string{
 			types.LabelRole: d.Get("role").(string),
 		},
 		Restart: true,
