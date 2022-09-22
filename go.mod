@@ -7,7 +7,7 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.8.1
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.18.0
 	github.com/k3d-io/k3d/v5 v5.4.2-0.20220515191656-1009992b5a3b
-	k8s.io/client-go v0.24.2
+	k8s.io/client-go v0.25.2
 )
 
 require (
@@ -125,10 +125,10 @@ require (
 	go4.org/intern v0.0.0-20220301175310-a089fc204883 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
 	golang.org/x/crypto v0.0.0-20220518034528-6f7dac969898 // indirect
-	golang.org/x/net v0.0.0-20220517181318-183a9ca12b87 // indirect
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
 	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5 // indirect
 	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29 // indirect
-	golang.org/x/sys v0.0.0-20220519141025-dcacdad47464 // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 	golang.org/x/term v0.0.0-20220411215600-e5f449aeb171 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306 // indirect
@@ -141,10 +141,10 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6 // indirect
-	k8s.io/apimachinery v0.24.2 // indirect
-	k8s.io/klog/v2 v2.60.1 // indirect
-	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
-	sigs.k8s.io/json v0.0.0-20211208200746-9f7c6b3444d2 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
+	k8s.io/apimachinery v0.25.2 // indirect
+	k8s.io/klog/v2 v2.70.1 // indirect
+	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed // indirect
+	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
