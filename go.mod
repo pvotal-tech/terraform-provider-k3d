@@ -2,6 +2,8 @@ module github.com/pvotal-tech/terraform-provider-k3d
 
 go 1.18
 
+replace github.com/k3d-io/k3d/v5 => github.com/moio/k3d/v5 v5.0.0-20230328124135-da29b7058f1e
+
 require (
 	github.com/docker/go-connections v0.4.0
 	github.com/hashicorp/terraform-plugin-docs v0.14.1
