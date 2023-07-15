@@ -439,7 +439,7 @@ func resourceCluster() *schema.Resource {
 	}
 }
 
-func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func getSimpleConfig(d *schema.ResourceData) *v1alpha5.SimpleConfig {
 	clusterName := d.Get("name").(string)
 
 	// TODO: validate all values with GetOk
@@ -493,20 +493,37 @@ func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta int
 		simpleConfig.Registries.Use = use
 	}
 
+	return simpleConfig
+}
+
+func getClusterConfig(ctx context.Context, simpleConfig v1alpha5.SimpleConfig) (*v1alpha5.ClusterConfig, error) {
 	// transform simple config to cluster config
-	clusterConfig, err := config.TransformSimpleToClusterConfig(ctx, runtimes.SelectedRuntime, *simpleConfig)
+	clusterConfig, err := config.TransformSimpleToClusterConfig(ctx, runtimes.SelectedRuntime, simpleConfig)
 	if err != nil {
-		return diag.FromErr(err)
+		return nil, err
 	}
 
 	// process cluster config
 	clusterConfig, err = config.ProcessClusterConfig(*clusterConfig)
 	if err != nil {
-		return diag.FromErr(err)
+		return nil, err
 	}
 
 	// validate cluster config
 	if err = config.ValidateClusterConfig(ctx, runtimes.SelectedRuntime, *clusterConfig); err != nil {
+		return nil, err
+	}
+
+	return clusterConfig, nil
+}
+
+func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	clusterName := d.Get("name").(string)
+
+	simpleConfig := getSimpleConfig(d)
+
+	clusterConfig, err := getClusterConfig(ctx, *simpleConfig)
+	if err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -580,6 +597,19 @@ func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta int
 
 	if err := client.ClusterDelete(ctx, runtimes.SelectedRuntime, &types.Cluster{Name: clusterName}, types.ClusterDeleteOpts{SkipRegistryCheck: false}); err != nil {
 		return diag.FromErr(err)
+	}
+
+	simpleConfig := getSimpleConfig(d)
+
+	clusterConfig, err := getClusterConfig(ctx, *simpleConfig)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	// clean up default kubeconfig
+	if err := client.KubeconfigRemoveClusterFromDefaultConfig(ctx, &clusterConfig.Cluster); err != nil {
+		log.Printf("[WARN] Failed to remove cluster details from default kubeconfig")
+		log.Printf("[WARN] %s", err)
 	}
 
 	return nil
