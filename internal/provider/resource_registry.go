@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-
-	"github.com/docker/go-connections/nat"
 
 	"github.com/k3d-io/k3d/v5/cmd/util"
 	"github.com/k3d-io/k3d/v5/pkg/client"
@@ -40,6 +39,13 @@ func resourceRegistry() *schema.Resource {
 				Type:        schema.TypeString,
 				Default:     fmt.Sprintf("%s:%s", types.DefaultRegistryImageRepo, types.DefaultRegistryImageTag),
 			},
+			"network": {
+				Description: "Join an existing network.",
+				Computed:    true,
+				ForceNew:    true,
+				Optional:    true,
+				Type:        schema.TypeString,
+			},
 			"port": {
 				Description: "Select which port the registry should be listening on on your machine (localhost).",
 				ForceNew:    true,
@@ -68,6 +74,45 @@ func resourceRegistry() *schema.Resource {
 					},
 				},
 			},
+			"proxy_remote_url": {
+				Description:  "URL of the proxied remote registry",
+				ForceNew:     true,
+				Optional:     true,
+				Type:         schema.TypeString,
+				ValidateFunc: validation.IsURLWithHTTPorHTTPS,
+			},
+			"proxy_username": {
+				Description: "Username of the proxied remote registry",
+				ForceNew:    true,
+				Optional:    true,
+				Type:        schema.TypeString,
+			},
+			"proxy_password": {
+				Description: "Password of the proxied remote registry",
+				ForceNew:    true,
+				Optional:    true,
+				Type:        schema.TypeString,
+			},
+			"volume": {
+				Description: "Mount volumes into the registry node",
+				ForceNew:    true,
+				Optional:    true,
+				Type:        schema.TypeList,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"source": {
+							ForceNew: true,
+							Optional: true,
+							Type:     schema.TypeString,
+						},
+						"destination": {
+							ForceNew: true,
+							Required: true,
+							Type:     schema.TypeString,
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -80,6 +125,16 @@ func resourceRegistryCreate(ctx context.Context, d *schema.ResourceData, meta in
 		ExposureOpts: expandExposureOpts(d.Get("port").([]interface{})),
 		Host:         registryID,
 		Image:        d.Get("image").(string),
+		Network:      d.Get("network").(string),
+		Volumes:      expandRegistryVolumes(d.Get("volume").([]interface{})),
+
+		Options: types.RegistryOptions{
+			Proxy: types.RegistryProxy{
+				RemoteURL: d.Get("proxy_remote_url").(string),
+				Username:  d.Get("proxy_username").(string),
+				Password:  d.Get("proxy_password").(string),
+			},
+		},
 	}
 
 	if _, err := client.RegistryRun(ctx, runtimes.SelectedRuntime, registry); err != nil {
@@ -89,6 +144,26 @@ func resourceRegistryCreate(ctx context.Context, d *schema.ResourceData, meta in
 	d.SetId(registryID)
 
 	return resourceRegistryRead(ctx, d, meta)
+}
+
+func expandRegistryVolumes(l []interface{}) []string {
+	if len(l) == 0 || l[0] == nil {
+		return nil
+	}
+
+	volumes := make([]string, 0, len(l))
+	for _, i := range l {
+		v := i.(map[string]interface{})
+
+		volume := fmt.Sprintf("%s", v["destination"].(string))
+		if v["source"].(string) != "" {
+			volume = fmt.Sprintf("%s:%s", v["source"].(string), v["destination"].(string))
+		}
+
+		volumes = append(volumes, volume)
+	}
+
+	return volumes
 }
 
 func resourceRegistryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
