@@ -10,6 +10,10 @@ require (
 	k8s.io/client-go v0.27.1
 )
 
+replace (
+	k8s.io/kubelet => k8s.io/kubelet v0.27.1
+)
+
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
