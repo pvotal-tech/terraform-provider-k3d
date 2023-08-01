@@ -39,6 +39,13 @@ func resourceRegistry() *schema.Resource {
 				Type:        schema.TypeString,
 				Default:     fmt.Sprintf("%s:%s", types.DefaultRegistryImageRepo, types.DefaultRegistryImageTag),
 			},
+			"network": {
+				Description: "Join an existing network.",
+				Computed:    true,
+				ForceNew:    true,
+				Optional:    true,
+				Type:        schema.TypeString,
+			},
 			"port": {
 				Description: "Select which port the registry should be listening on on your machine (localhost).",
 				ForceNew:    true,
@@ -118,6 +125,7 @@ func resourceRegistryCreate(ctx context.Context, d *schema.ResourceData, meta in
 		ExposureOpts: expandExposureOpts(d.Get("port").([]interface{})),
 		Host:         registryID,
 		Image:        d.Get("image").(string),
+		Network:      d.Get("network").(string),
 		Volumes:      expandRegistryVolumes(d.Get("volume").([]interface{})),
 
 		Options: types.RegistryOptions{
