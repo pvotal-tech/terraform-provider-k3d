@@ -1,49 +1,47 @@
-# This GitHub action can publish assets for release when a tag is created.
-# Currently its setup to run on any tag that matches the pattern "v*" (ie. v0.1.0).
-#
-# This uses an action (hashicorp/ghaction-import-gpg) that assumes you set your 
-# private key in the `GPG_PRIVATE_KEY` secret and passphrase in the `PASSPHRASE`
-# secret. If you would rather own your own GPG handling, please fork this action
-# or use an alternative one for key handling.
-#
-# You will need to pass the `--batch` flag to `gpg` in your signing step 
-# in `goreleaser` to indicate this is being used in a non-interactive mode.
-#
 name: release
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 jobs:
   goreleaser:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v4.1.1
-      -
-        name: Unshallow
+      - name: Unshallow
         run: git fetch --prune --unshallow
-      -
-        name: Set up Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-      -
-        name: Import GPG key
+      - name: Import GPG key (optional)
         id: import_gpg
+        continue-on-error: true
         uses: crazy-max/ghaction-import-gpg@v5.3.0
         with:
-          # These secrets will need to be configured for the repository:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
-      -
-        name: Run GoReleaser
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Run GoReleaser (with signing)
+        if: ${{ steps.import_gpg.outputs.fingerprint != '' }}
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
-          args: release --rm-dist
+          version: v1.24.0
+          args: release --rm-dist --config .goreleaser.yaml
         env:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-          # GitHub sets this automatically
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run GoReleaser (skip signing)
+        if: ${{ steps.import_gpg.outputs.fingerprint == '' }}
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: v1.24.0
+          args: release --rm-dist --config .goreleaser.yaml --skip=sign
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

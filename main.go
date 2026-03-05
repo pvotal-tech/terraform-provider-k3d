@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/pvotal-tech/terraform-provider-k3d/internal/provider"
+	"github.com/agynio/terraform-provider-k3d/internal/provider"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 )
 
