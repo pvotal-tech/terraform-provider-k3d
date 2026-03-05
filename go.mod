@@ -1,4 +1,4 @@
-module github.com/pvotal-tech/terraform-provider-k3d
+module github.com/agynio/terraform-provider-k3d
 
 go 1.22.4
 

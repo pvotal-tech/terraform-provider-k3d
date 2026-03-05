@@ -4,16 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	types2 "github.com/k3d-io/k3d/v5/pkg/config/types"
 	"github.com/k3d-io/k3d/v5/pkg/config/v1alpha5"
+	"github.com/mitchellh/copystructure"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"sigs.k8s.io/yaml"
 
 	"github.com/k3d-io/k3d/v5/cmd/util"
+	"github.com/k3d-io/k3d/v5/pkg/actions"
 	"github.com/k3d-io/k3d/v5/pkg/client"
 	"github.com/k3d-io/k3d/v5/pkg/config"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
@@ -34,7 +39,7 @@ func resourceCluster() *schema.Resource {
 
 		CreateContext: resourceClusterCreate,
 		ReadContext:   resourceClusterRead,
-		// UpdateContext: resourceClusterUpdate,
+		UpdateContext: resourceClusterUpdate,
 		DeleteContext: resourceClusterDelete,
 
 		Schema: map[string]*schema.Schema{
@@ -259,36 +264,30 @@ func resourceCluster() *schema.Resource {
 			},
 			"port": {
 				Description: "Map ports from the node containers to the host.",
-				ForceNew:    true,
 				Optional:    true,
 				Type:        schema.TypeList,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"host": {
-							ForceNew: true,
 							Optional: true,
 							Type:     schema.TypeString,
 						},
 						"host_port": {
-							ForceNew:     true,
 							Optional:     true,
 							Type:         schema.TypeInt,
 							ValidateFunc: validation.IsPortNumber,
 						},
 						"container_port": {
-							ForceNew:     true,
 							Required:     true,
 							Type:         schema.TypeInt,
 							ValidateFunc: validation.IsPortNumber,
 						},
 						"protocol": {
-							ForceNew:     true,
 							Optional:     true,
 							Type:         schema.TypeString,
 							ValidateFunc: validation.StringInSlice([]string{"TCP", "UDP"}, true),
 						},
 						"node_filters": {
-							ForceNew: true,
 							Optional: true,
 							Type:     schema.TypeList,
 							Elem:     &schema.Schema{Type: schema.TypeString},
@@ -438,8 +437,23 @@ func resourceCluster() *schema.Resource {
 	}
 }
 
-func getSimpleConfig(d *schema.ResourceData) *v1alpha5.SimpleConfig {
+func getSimpleConfig(d *schema.ResourceData) (*v1alpha5.SimpleConfig, error) {
 	clusterName := d.Get("name").(string)
+
+	portRaw := d.Get("port")
+	var portList []interface{}
+	if portRaw != nil {
+		var ok bool
+		portList, ok = portRaw.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for port attribute: %T", portRaw)
+		}
+	}
+
+	ports, err := expandPorts(portList)
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO: validate all values with GetOk
 	simpleConfig := &v1alpha5.SimpleConfig{
@@ -452,7 +466,7 @@ func getSimpleConfig(d *schema.ResourceData) *v1alpha5.SimpleConfig {
 		ExposeAPI:    expandExposureOptions(d.Get("kube_api").([]interface{})),
 		Image:        d.Get("image").(string),
 		Network:      d.Get("network").(string),
-		Ports:        expandPorts(d.Get("port").([]interface{})),
+		Ports:        ports,
 		Servers:      d.Get("servers").(int),
 		//Subnet:       d.Get("subnet").(string),
 		Volumes: expandVolumes(d.Get("volume").([]interface{})),
@@ -492,7 +506,7 @@ func getSimpleConfig(d *schema.ResourceData) *v1alpha5.SimpleConfig {
 		simpleConfig.Registries.Use = use
 	}
 
-	return simpleConfig
+	return simpleConfig, nil
 }
 
 func getClusterConfig(ctx context.Context, simpleConfig v1alpha5.SimpleConfig) (*v1alpha5.ClusterConfig, error) {
@@ -520,7 +534,10 @@ func getClusterConfig(ctx context.Context, simpleConfig v1alpha5.SimpleConfig) (
 func resourceClusterCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	clusterName := d.Get("name").(string)
 
-	simpleConfig := getSimpleConfig(d)
+	simpleConfig, err := getSimpleConfig(d)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	clusterConfig, err := getClusterConfig(ctx, *simpleConfig)
 	if err != nil {
@@ -583,14 +600,49 @@ func resourceClusterRead(ctx context.Context, d *schema.ResourceData, meta inter
 	return nil
 }
 
-/*
 func resourceClusterUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// use the meta value to retrieve your client from the provider configure method
-	// client := meta.(*apiClient)
+	if !d.HasChange("port") {
+		return resourceClusterRead(ctx, d, meta)
+	}
 
-	return diag.Errorf("not implemented")
+	clusterName := d.Get("name").(string)
+
+	cluster, err := client.ClusterGet(ctx, runtimes.SelectedRuntime, &types.Cluster{Name: clusterName})
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	oldRaw, newRaw := d.GetChange("port")
+	oldPorts, err := expandPortsFromRaw(oldRaw)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("failed to parse previous port configuration: %w", err))
+	}
+
+	newPorts, err := expandPortsFromRaw(newRaw)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("failed to parse desired port configuration: %w", err))
+	}
+
+	oldProjection, err := buildClusterPortProjection(ctx, cluster, oldPorts)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	newProjection, err := buildClusterPortProjection(ctx, cluster, newPorts)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	plan := determinePortUpdatePlan(oldProjection, newProjection)
+
+	if plan.loadBalancer || len(plan.nodeNames) > 0 {
+		if err := applyPortUpdatePlan(ctx, cluster, newProjection, plan); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	return resourceClusterRead(ctx, d, meta)
 }
-*/
 
 func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	clusterName := d.Get("name").(string)
@@ -599,7 +651,10 @@ func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.FromErr(err)
 	}
 
-	simpleConfig := getSimpleConfig(d)
+	simpleConfig, err := getSimpleConfig(d)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	clusterConfig, err := getClusterConfig(ctx, *simpleConfig)
 	if err != nil {
@@ -610,6 +665,380 @@ func resourceClusterDelete(ctx context.Context, d *schema.ResourceData, meta int
 	if err := client.KubeconfigRemoveClusterFromDefaultConfig(ctx, &clusterConfig.Cluster); err != nil {
 		log.Printf("[WARN] Failed to remove cluster details from default kubeconfig")
 		log.Printf("[WARN] %s", err)
+	}
+
+	return nil
+}
+
+type portUpdatePlan struct {
+	loadBalancer bool
+	nodeNames    []string
+}
+
+func expandPortsFromRaw(raw interface{}) ([]v1alpha5.PortWithNodeFilters, error) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for port diff: %T", raw)
+	}
+
+	if len(list) == 0 {
+		return nil, nil
+	}
+
+	return expandPorts(list)
+}
+
+func buildClusterPortProjection(ctx context.Context, reference *types.Cluster, ports []v1alpha5.PortWithNodeFilters) (*types.Cluster, error) {
+	cloneValue, err := copystructure.Copy(reference)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy cluster definition: %w", err)
+	}
+
+	clone, ok := cloneValue.(*types.Cluster)
+	if !ok {
+		return nil, fmt.Errorf("unexpected cluster copy type %T", cloneValue)
+	}
+
+	resetClusterPortState(clone, reference)
+
+	if len(ports) == 0 {
+		return clone, nil
+	}
+
+	if err := client.TransformPorts(ctx, runtimes.SelectedRuntime, clone, ports); err != nil {
+		return nil, fmt.Errorf("failed to apply port configuration: %w", err)
+	}
+
+	return clone, nil
+}
+
+func resetClusterPortState(target *types.Cluster, reference *types.Cluster) {
+	if target == nil {
+		return
+	}
+
+	servers := collectServerNames(target)
+
+	for _, node := range target.Nodes {
+		if node == nil {
+			continue
+		}
+		node.Ports = nat.PortMap{}
+	}
+
+	if target.ServerLoadBalancer == nil || target.ServerLoadBalancer.Node == nil {
+		return
+	}
+
+	bindings := []nat.PortBinding{}
+	if reference != nil && reference.ServerLoadBalancer != nil && reference.ServerLoadBalancer.Node != nil {
+		if existing, ok := reference.ServerLoadBalancer.Node.Ports[types.DefaultAPIPort]; ok {
+			bindings = copyPortBindings(existing)
+		}
+	}
+
+	if len(bindings) == 0 && reference != nil && reference.KubeAPI != nil {
+		bindings = append(bindings, reference.KubeAPI.Binding)
+	}
+	if len(bindings) == 0 && target.KubeAPI != nil {
+		bindings = append(bindings, target.KubeAPI.Binding)
+	}
+
+	target.ServerLoadBalancer.Node.Ports = nat.PortMap{}
+	if len(bindings) > 0 {
+		target.ServerLoadBalancer.Node.Ports[types.DefaultAPIPort] = bindings
+	}
+
+	settings := types.LoadBalancerSettings{
+		WorkerConnections: types.DefaultLoadbalancerWorkerConnections,
+	}
+	if reference != nil && reference.ServerLoadBalancer != nil && reference.ServerLoadBalancer.Config != nil {
+		settings = reference.ServerLoadBalancer.Config.Settings
+	}
+
+	portKey := fmt.Sprintf("%s.tcp", types.DefaultAPIPort)
+	target.ServerLoadBalancer.Config = &types.LoadbalancerConfig{
+		Ports: map[string][]string{
+			portKey: append([]string(nil), servers...),
+		},
+		Settings: settings,
+	}
+}
+
+func collectServerNames(cluster *types.Cluster) []string {
+	if cluster == nil {
+		return nil
+	}
+
+	servers := make([]string, 0)
+	for _, node := range cluster.Nodes {
+		if node != nil && node.Role == types.ServerRole {
+			servers = append(servers, node.Name)
+		}
+	}
+
+	return servers
+}
+
+func copyPortMap(src nat.PortMap) nat.PortMap {
+	if len(src) == 0 {
+		return nat.PortMap{}
+	}
+
+	dst := make(nat.PortMap, len(src))
+	for port, bindings := range src {
+		dst[port] = copyPortBindings(bindings)
+	}
+
+	return dst
+}
+
+func copyPortBindings(src []nat.PortBinding) []nat.PortBinding {
+	if len(src) == 0 {
+		return nil
+	}
+
+	dst := make([]nat.PortBinding, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func portMapEqual(a, b nat.PortMap) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for port, bindingsA := range a {
+		bindingsB, ok := b[port]
+		if !ok {
+			return false
+		}
+		if !portBindingsEqual(bindingsA, bindingsB) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func portBindingsEqual(a, b []nat.PortBinding) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+
+	copyA := make([]nat.PortBinding, len(a))
+	copy(copyA, a)
+	copyB := make([]nat.PortBinding, len(b))
+	copy(copyB, b)
+
+	sort.Slice(copyA, func(i, j int) bool {
+		return copyA[i].HostIP+":"+copyA[i].HostPort < copyA[j].HostIP+":"+copyA[j].HostPort
+	})
+	sort.Slice(copyB, func(i, j int) bool {
+		return copyB[i].HostIP+":"+copyB[i].HostPort < copyB[j].HostIP+":"+copyB[j].HostPort
+	})
+
+	for i := range copyA {
+		if copyA[i] != copyB[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func determinePortUpdatePlan(oldProjection, newProjection *types.Cluster) portUpdatePlan {
+	plan := portUpdatePlan{}
+
+	if !portMapEqual(getLoadbalancerPorts(oldProjection), getLoadbalancerPorts(newProjection)) {
+		plan.loadBalancer = true
+	}
+
+	oldNodes := mapNodesByName(oldProjection)
+	newNodes := mapNodesByName(newProjection)
+
+	for name, newNode := range newNodes {
+		if newNode == nil || newNode.Role == types.LoadBalancerRole {
+			continue
+		}
+
+		oldNode := oldNodes[name]
+		var oldPorts nat.PortMap
+		if oldNode != nil {
+			oldPorts = oldNode.Ports
+		}
+		if !portMapEqual(oldPorts, newNode.Ports) {
+			plan.nodeNames = append(plan.nodeNames, name)
+		}
+	}
+
+	if len(plan.nodeNames) > 1 {
+		sort.Strings(plan.nodeNames)
+	}
+
+	return plan
+}
+
+func getLoadbalancerPorts(cluster *types.Cluster) nat.PortMap {
+	if cluster == nil || cluster.ServerLoadBalancer == nil || cluster.ServerLoadBalancer.Node == nil {
+		return nat.PortMap{}
+	}
+	return cluster.ServerLoadBalancer.Node.Ports
+}
+
+func mapNodesByName(cluster *types.Cluster) map[string]*types.Node {
+	result := make(map[string]*types.Node)
+	if cluster == nil {
+		return result
+	}
+
+	for _, node := range cluster.Nodes {
+		if node != nil {
+			result[node.Name] = node
+		}
+	}
+
+	return result
+}
+
+func applyPortUpdatePlan(ctx context.Context, actual *types.Cluster, desired *types.Cluster, plan portUpdatePlan) error {
+	if plan.loadBalancer {
+		if err := replaceLoadBalancer(ctx, actual, desired); err != nil {
+			return err
+		}
+	}
+
+	for _, name := range plan.nodeNames {
+		if err := replaceClusterNode(ctx, actual, desired, name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func replaceLoadBalancer(ctx context.Context, actual *types.Cluster, desired *types.Cluster) error {
+	if actual.ServerLoadBalancer == nil || desired.ServerLoadBalancer == nil {
+		return fmt.Errorf("cluster does not have a load balancer")
+	}
+
+	replacement, err := client.CopyNode(ctx, actual.ServerLoadBalancer.Node, client.CopyNodeOpts{})
+	if err != nil {
+		return fmt.Errorf("failed to copy load balancer node: %w", err)
+	}
+
+	replacement.Ports = copyPortMap(desired.ServerLoadBalancer.Node.Ports)
+	replacement.HookActions = filterLoadbalancerConfigHooks(replacement.HookActions)
+
+	lbConfig, err := client.LoadbalancerGenerateConfig(desired)
+	if err != nil {
+		return fmt.Errorf("failed to generate load balancer config: %w", err)
+	}
+
+	configyaml, err := yaml.Marshal(lbConfig)
+	if err != nil {
+		return fmt.Errorf("failed to marshal load balancer config: %w", err)
+	}
+
+	replacement.HookActions = append(replacement.HookActions, types.NodeHook{
+		Stage: types.LifecycleStagePreStart,
+		Action: actions.WriteFileAction{
+			Runtime:     runtimes.SelectedRuntime,
+			Content:     configyaml,
+			Dest:        types.DefaultLoadbalancerConfigPath,
+			Mode:        0o744,
+			Description: "Write Loadbalancer Configuration",
+		},
+	})
+
+	if err := client.NodeReplace(ctx, runtimes.SelectedRuntime, actual.ServerLoadBalancer.Node, replacement); err != nil {
+		return fmt.Errorf("failed to replace load balancer node: %w", err)
+	}
+
+	actual.ServerLoadBalancer.Node = replacement
+	actual.ServerLoadBalancer.Config = &lbConfig
+
+	return nil
+}
+
+func filterLoadbalancerConfigHooks(hooks []types.NodeHook) []types.NodeHook {
+	if len(hooks) == 0 {
+		return hooks
+	}
+
+	filtered := make([]types.NodeHook, 0, len(hooks))
+	for _, hook := range hooks {
+		if hook.Action == nil {
+			filtered = append(filtered, hook)
+			continue
+		}
+
+		skip := false
+		switch act := hook.Action.(type) {
+		case actions.WriteFileAction:
+			if act.Dest == types.DefaultLoadbalancerConfigPath {
+				skip = true
+			}
+		case *actions.WriteFileAction:
+			if act != nil && act.Dest == types.DefaultLoadbalancerConfigPath {
+				skip = true
+			}
+		}
+
+		if skip {
+			continue
+		}
+
+		filtered = append(filtered, hook)
+	}
+
+	return filtered
+}
+
+func replaceClusterNode(ctx context.Context, actual *types.Cluster, desired *types.Cluster, name string) error {
+	current := findNodeByName(actual, name)
+	desiredNode := findNodeByName(desired, name)
+	if current == nil || desiredNode == nil {
+		return fmt.Errorf("node %s not found", name)
+	}
+
+	replacement, err := client.CopyNode(ctx, current, client.CopyNodeOpts{})
+	if err != nil {
+		return fmt.Errorf("failed to copy node %s: %w", name, err)
+	}
+
+	replacement.Ports = copyPortMap(desiredNode.Ports)
+
+	if err := client.NodeReplace(ctx, runtimes.SelectedRuntime, current, replacement); err != nil {
+		return fmt.Errorf("failed to replace node %s: %w", name, err)
+	}
+
+	for i, node := range actual.Nodes {
+		if node != nil && node.Name == name {
+			actual.Nodes[i] = replacement
+			break
+		}
+	}
+
+	return nil
+}
+
+func findNodeByName(cluster *types.Cluster, name string) *types.Node {
+	if cluster == nil {
+		return nil
+	}
+
+	for _, node := range cluster.Nodes {
+		if node != nil && node.Name == name {
+			return node
+		}
 	}
 
 	return nil
@@ -749,21 +1178,90 @@ func expandNodeFilters(l []interface{}) []string {
 	return filters
 }
 
-func expandPorts(l []interface{}) []v1alpha5.PortWithNodeFilters {
-	if len(l) == 0 || l[0] == nil {
-		return nil
+func expandPorts(l []interface{}) ([]v1alpha5.PortWithNodeFilters, error) {
+	if len(l) == 0 {
+		return nil, nil
+	}
+	if len(l) == 1 && l[0] == nil {
+		return nil, nil
 	}
 
 	ports := make([]v1alpha5.PortWithNodeFilters, 0, len(l))
-	for _, i := range l {
-		v := i.(map[string]interface{})
+	for idx, item := range l {
+		if item == nil {
+			return nil, fmt.Errorf("port[%d]: expected object, got nil", idx)
+		}
+
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("port[%d]: expected object, got %T", idx, item)
+		}
+
+		host := ""
+		if value, exists := entry["host"]; exists {
+			if value == nil {
+				host = ""
+			} else {
+				str, ok := value.(string)
+				if !ok {
+					return nil, fmt.Errorf("port[%d].host: expected string, got %T", idx, value)
+				}
+				host = str
+			}
+		}
+
+		hostPort := 0
+		if value, exists := entry["host_port"]; exists {
+			if value != nil {
+				num, ok := value.(int)
+				if !ok {
+					return nil, fmt.Errorf("port[%d].host_port: expected number, got %T", idx, value)
+				}
+				hostPort = num
+			}
+		}
+
+		containerValue, exists := entry["container_port"]
+		if !exists || containerValue == nil {
+			return nil, fmt.Errorf("port[%d].container_port: missing value", idx)
+		}
+
+		containerPort, ok := containerValue.(int)
+		if !ok {
+			return nil, fmt.Errorf("port[%d].container_port: expected number, got %T", idx, containerValue)
+		}
+
+		protocol := ""
+		if value, exists := entry["protocol"]; exists {
+			if value == nil {
+				protocol = ""
+			} else {
+				str, ok := value.(string)
+				if !ok {
+					return nil, fmt.Errorf("port[%d].protocol: expected string, got %T", idx, value)
+				}
+				protocol = str
+			}
+		}
+
+		var filtersList []interface{}
+		if value, exists := entry["node_filters"]; exists {
+			if value != nil {
+				list, ok := value.([]interface{})
+				if !ok {
+					return nil, fmt.Errorf("port[%d].node_filters: expected list, got %T", idx, value)
+				}
+				filtersList = list
+			}
+		}
+
 		ports = append(ports, v1alpha5.PortWithNodeFilters{
-			Port:        fmt.Sprintf("%s:%d:%d/%s", v["host"].(string), v["host_port"].(int), v["container_port"].(int), v["protocol"].(string)),
-			NodeFilters: expandNodeFilters(v["node_filters"].([]interface{})),
+			Port:        fmt.Sprintf("%s:%d:%d/%s", host, hostPort, containerPort, protocol),
+			NodeFilters: expandNodeFilters(filtersList),
 		})
 	}
 
-	return ports
+	return ports, nil
 }
 
 func expandVolumes(l []interface{}) []v1alpha5.VolumeWithNodeFilters {
